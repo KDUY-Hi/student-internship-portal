@@ -17,6 +17,7 @@ class UserRead(BaseModel):
     name: str
     email: EmailStr
     role: UserRole
+    is_active: bool
 
     model_config = {"from_attributes": True}
 
@@ -55,6 +56,7 @@ class CompanyBase(BaseModel):
     description: str | None = None
     website: str | None = None
     address: str | None = None
+    logo_url: str | None = None
 
 
 class CompanyRead(CompanyBase):
@@ -107,3 +109,44 @@ class ApplicationRead(BaseModel):
 
 class ApplicationStatusUpdate(BaseModel):
     status: ApplicationStatus
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class InternshipStatusUpdate(BaseModel):
+    status: PostStatus
+
+
+class SkillCreate(BaseModel):
+    name: str
+
+
+class SkillRead(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class NotificationRead(BaseModel):
+    id: int
+    title: str
+    message: str
+    is_read: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DashboardStats(BaseModel):
+    users: int | None = None
+    students: int | None = None
+    companies: int | None = None
+    internships: int | None = None
+    applications: int | None = None
+    pending_internships: int | None = None
+    approved_internships: int | None = None
+    accepted_applications: int | None = None
+    rejected_applications: int | None = None

@@ -2,9 +2,12 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.database import Base, engine
 from app.main import app
 
 
+Base.metadata.drop_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 client = TestClient(app)
 
 
@@ -42,6 +45,7 @@ def test_student_company_admin_flow():
             "requirements": "Python, AWS",
             "location": "Ho Chi Minh City",
             "work_type": "remote",
+            "deadline": "2099-12-31",
         },
         headers=auth_headers(company),
     )
@@ -82,6 +86,27 @@ def test_student_company_admin_flow():
     )
     assert updated.status_code == 200
     assert updated.json()["status"] == "Interview"
+
+    company_cv = client.get(f"/company/applications/{application_id}/cv", headers=auth_headers(company))
+    assert company_cv.status_code == 200
+    assert company_cv.json()["cv_url"]
+
+    student_notifications = client.get("/notifications", headers=auth_headers(student))
+    assert student_notifications.status_code == 200
+    assert any("status" in item["title"].lower() for item in student_notifications.json())
+
+    admin_stats = client.get("/admin/dashboard", headers=auth_headers(admin))
+    assert admin_stats.status_code == 200
+    assert admin_stats.json()["applications"] >= 1
+
+    skill = client.post("/admin/skills", json={"name": "AWS"}, headers=auth_headers(admin))
+    assert skill.status_code == 201
+    skills = client.get("/skills")
+    assert skills.status_code == 200
+    assert any(item["name"] == "AWS" for item in skills.json())
+
+    locked = client.patch("/admin/users/1/status", json={"is_active": False}, headers=auth_headers(admin))
+    assert locked.status_code in {200, 400}
 
 
 def test_role_access_is_blocked():

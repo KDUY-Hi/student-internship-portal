@@ -142,6 +142,31 @@ button,
   gap: 20px;
 }
 
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat {
+  background: #ffffff;
+  border: 1px solid #dfe5df;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.stat strong {
+  display: block;
+  font-size: 1.7rem;
+  color: #24766f;
+}
+
+.stat span {
+  color: #53635f;
+  text-transform: capitalize;
+}
+
 .panel,
 .cloud-panel {
   background: #ffffff;
@@ -229,6 +254,13 @@ select {
   margin-bottom: 14px;
 }
 
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .icon-button {
   display: grid;
   place-items: center;
@@ -261,6 +293,23 @@ select {
   padding: 14px;
   border: 1px solid #e2e8e4;
   border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.compact .item {
+  grid-template-columns: 1fr;
+}
+
+.empty,
+.detail {
+  color: #53635f;
+}
+
+.detail {
+  margin-top: 14px;
+  border: 1px solid #dfe5df;
+  border-radius: 8px;
+  padding: 14px;
   background: #fbfcfb;
 }
 

@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -5,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_role
 from app.database import get_db
 from app.models import Application, InternshipPost, PostStatus, StudentProfile, User, UserRole
+from app.notifications import create_notification
 from app.schemas import ApplicationCreate, ApplicationRead, StudentProfileBase, StudentProfileRead
 from app.services import upload_cv_to_s3
 
@@ -75,9 +78,21 @@ def apply_to_internship(
     internship = db.get(InternshipPost, payload.internship_id)
     if not internship or internship.status != PostStatus.approved:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approved internship not found")
+    if internship.deadline:
+        try:
+            if date.fromisoformat(internship.deadline) < date.today():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Internship deadline has passed")
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Internship deadline must use YYYY-MM-DD") from exc
 
     application = Application(student_id=profile.id, internship_id=internship.id, cv_url=profile.cv_url)
     db.add(application)
+    create_notification(
+        db,
+        internship.company.user_id,
+        "New application",
+        f"{current_user.name} applied to {internship.title}.",
+    )
     try:
         db.commit()
     except IntegrityError as exc:

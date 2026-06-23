@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_role
 from app.database import get_db
 from app.models import Application, Company, InternshipPost, User, UserRole
+from app.notifications import create_notification
 from app.routers.internships import serialize_post
 from app.routers.student import serialize_application
 from app.schemas import ApplicationRead, ApplicationStatusUpdate, CompanyBase, CompanyRead, InternshipPostCreate, InternshipPostRead
@@ -91,6 +92,25 @@ def update_application_status(
     if not application or application.internship.company_id != company.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     application.status = payload.status
+    create_notification(
+        db,
+        application.student.user_id,
+        "Application status updated",
+        f"Your application for {application.internship.title} is now {payload.status.value}.",
+    )
     db.commit()
     db.refresh(application)
     return serialize_application(application)
+
+
+@router.get("/applications/{application_id}/cv")
+def get_application_cv(
+    application_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.company)),
+):
+    company = get_or_create_company(db, current_user)
+    application = db.get(Application, application_id)
+    if not application or application.internship.company_id != company.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return {"cv_url": application.cv_url}

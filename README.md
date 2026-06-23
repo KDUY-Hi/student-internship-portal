@@ -25,6 +25,8 @@ Sinh viên:
 - Xem và tìm kiếm vị trí thực tập
 - Nộp đơn ứng tuyển
 - Xem trạng thái ứng tuyển
+- Xem thống kê số đơn ứng tuyển
+- Nhận thông báo khi trạng thái ứng tuyển thay đổi
 
 Doanh nghiệp:
 - Đăng ký, đăng nhập
@@ -32,12 +34,17 @@ Doanh nghiệp:
 - Đăng vị trí thực tập
 - Xem danh sách ứng viên
 - Cập nhật trạng thái ứng tuyển: `Pending`, `Reviewed`, `Interview`, `Accepted`, `Rejected`
+- Xem thống kê số bài đăng và số ứng viên
+- Nhận thông báo khi admin duyệt hoặc từ chối bài đăng
 
 Admin:
 - Xem danh sách người dùng
+- Khóa hoặc mở khóa tài khoản người dùng
 - Xem các bài đăng đang chờ duyệt
-- Duyệt hoặc từ chối bài đăng thực tập
+- Duyệt, từ chối hoặc đóng bài đăng thực tập
 - Xóa bài đăng không phù hợp
+- Quản lý danh sách kỹ năng
+- Xem dashboard thống kê tổng quan
 
 ## Cấu trúc thư mục
 
@@ -170,6 +177,14 @@ DATABASE_URL=sqlite:///./internship_portal.db
 
 Khi chạy backend, database local sẽ được tạo tự động.
 
+Nếu bạn đã chạy phiên bản cũ của dự án trước khi schema được bổ sung, hãy xóa file SQLite cũ rồi chạy lại backend:
+
+```powershell
+Remove-Item backend\internship_portal.db
+```
+
+Lệnh này chỉ cần dùng cho môi trường local SQLite. Khi xóa file này, dữ liệu demo cũ cũng sẽ mất.
+
 Các bảng chính:
 
 - `users`: tài khoản đăng nhập của student, company, admin
@@ -177,6 +192,8 @@ Các bảng chính:
 - `companies`: hồ sơ doanh nghiệp
 - `internship_posts`: bài đăng thực tập
 - `applications`: hồ sơ ứng tuyển
+- `skills`: danh sách kỹ năng dùng để lọc và nhập liệu
+- `notifications`: thông báo trong hệ thống
 
 Quan hệ chính:
 
@@ -197,6 +214,13 @@ Auth:
 - `POST /auth/login`
 - `GET /auth/me`
 
+Common:
+- `GET /skills`
+- `GET /notifications`
+- `PATCH /notifications/{id}/read`
+- `GET /students/dashboard`
+- `GET /company/dashboard`
+
 Student:
 - `GET /internships`
 - `GET /internships/{id}`
@@ -212,12 +236,18 @@ Company:
 - `POST /company/internships`
 - `GET /company/internships`
 - `GET /company/applications`
+- `GET /company/applications/{id}/cv`
 - `PATCH /company/applications/{id}/status`
 
 Admin:
 - `GET /admin/users`
+- `PATCH /admin/users/{id}/status`
+- `GET /admin/dashboard`
+- `POST /admin/skills`
+- `GET /admin/internships`
 - `GET /admin/internships/pending`
 - `PATCH /admin/internships/{id}/approve`
+- `PATCH /admin/internships/{id}/status`
 - `DELETE /admin/internships/{id}`
 
 ## Chạy test
@@ -233,6 +263,9 @@ Test hiện tại kiểm tra luồng chính:
 - Admin duyệt bài
 - Student upload CV và apply
 - Company cập nhật trạng thái ứng tuyển
+- Company xem link CV của ứng viên
+- Notification được tạo khi trạng thái thay đổi
+- Admin dashboard và skills hoạt động
 - API admin bị chặn nếu user không có quyền admin
 
 ## Ghi chú deploy AWS

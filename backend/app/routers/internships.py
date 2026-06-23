@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import InternshipPost, PostStatus, User
+from app.models import Company, InternshipPost, PostStatus, User
 from app.schemas import InternshipPostRead
 
 router = APIRouter(prefix="/internships", tags=["internships"])
@@ -19,7 +19,9 @@ def serialize_post(post: InternshipPost) -> InternshipPostRead:
 @router.get("", response_model=list[InternshipPostRead])
 def list_internships(
     q: str | None = None,
+    company: str | None = None,
     location: str | None = None,
+    skill: str | None = None,
     work_type: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -33,6 +35,10 @@ def list_internships(
                 InternshipPost.requirements.ilike(like),
             )
         )
+    if company:
+        query = query.join(Company).filter(Company.company_name.ilike(f"%{company}%"))
+    if skill:
+        query = query.filter(InternshipPost.requirements.ilike(f"%{skill}%"))
     if location:
         query = query.filter(InternshipPost.location.ilike(f"%{location}%"))
     if work_type:
