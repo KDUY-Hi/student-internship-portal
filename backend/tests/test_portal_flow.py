@@ -32,10 +32,15 @@ def test_student_company_admin_flow():
 
     profile = client.post(
         "/company/profile",
-        json={"company_name": "AWS Cloud Co", "description": "Cloud internships"},
+        json={"company_name": "AWS Cloud Co", "description": "Cloud internships", "address": "Ho Chi Minh City"},
         headers=auth_headers(company),
     )
     assert profile.status_code == 200
+
+    companies = client.get("/companies?q=AWS&location=Ho Chi Minh")
+    assert companies.status_code == 200
+    assert len(companies.json()) == 1
+    assert companies.json()[0]["company_name"] == "AWS Cloud Co"
 
     post = client.post(
         "/company/internships",

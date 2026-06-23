@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
-from app.models import Application, ApplicationStatus, InternshipPost, Notification, Skill, User, UserRole
-from app.schemas import DashboardStats, NotificationRead, SkillRead
+from sqlalchemy import or_
+
+from app.models import Application, ApplicationStatus, Company, InternshipPost, Notification, PostStatus, Skill, User, UserRole
+from app.schemas import CompanySearchRead, DashboardStats, NotificationRead, SkillRead
 
 router = APIRouter(tags=["common"])
 
@@ -12,6 +14,39 @@ router = APIRouter(tags=["common"])
 @router.get("/skills", response_model=list[SkillRead])
 def list_skills(db: Session = Depends(get_db)):
     return db.query(Skill).order_by(Skill.name.asc()).all()
+
+
+@router.get("/companies", response_model=list[CompanySearchRead])
+def search_companies(q: str | None = None, location: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(Company).join(User).filter(User.is_active.is_(True))
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                Company.company_name.ilike(like),
+                Company.description.ilike(like),
+                Company.address.ilike(like),
+            )
+        )
+    if location:
+        query = query.filter(Company.address.ilike(f"%{location}%"))
+
+    companies = query.order_by(Company.company_name.asc()).all()
+    result = []
+    for company in companies:
+        result.append(
+            CompanySearchRead(
+                id=company.id,
+                company_name=company.company_name,
+                description=company.description,
+                website=company.website,
+                address=company.address,
+                logo_url=company.logo_url,
+                approved_internships=sum(1 for post in company.internship_posts if post.status == PostStatus.approved),
+                total_internships=len(company.internship_posts),
+            )
+        )
+    return result
 
 
 @router.get("/notifications", response_model=list[NotificationRead])

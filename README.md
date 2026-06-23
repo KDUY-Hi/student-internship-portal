@@ -23,6 +23,7 @@ Sinh viên:
 - Tạo và cập nhật hồ sơ cá nhân
 - Upload CV
 - Xem và tìm kiếm vị trí thực tập
+- Tìm kiếm công ty theo tên, mô tả hoặc địa điểm
 - Nộp đơn ứng tuyển
 - Xem trạng thái ứng tuyển
 - Xem thống kê số đơn ứng tuyển
@@ -216,6 +217,7 @@ Auth:
 
 Common:
 - `GET /skills`
+- `GET /companies`
 - `GET /notifications`
 - `PATCH /notifications/{id}/read`
 - `GET /students/dashboard`

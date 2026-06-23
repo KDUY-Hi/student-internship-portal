@@ -227,17 +227,21 @@ function SharedTop({ session, stats, notifications }) {
 
 function StudentView({ session, setMessage }) {
   const [jobs, setJobs] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [applications, setApplications] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [stats, setStats] = useState({});
   const [skills, setSkills] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
   const [filters, setFilters] = useState({ q: '', company: '', location: '', skill: '', work_type: '' });
+  const [companyFilters, setCompanyFilters] = useState({ q: '', location: '' });
   const [profile, setProfile] = useState({ university: '', major: '', skills: '', gpa: '', experience: '', github: '', linkedin: '' });
 
   async function load() {
     const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    const companyParams = new URLSearchParams(Object.entries(companyFilters).filter(([, value]) => value));
     setJobs(await api(`/internships${params.toString() ? `?${params}` : ''}`));
+    setCompanies(await api(`/companies${companyParams.toString() ? `?${companyParams}` : ''}`));
     setApplications(await api('/applications/me', { token: session.token }));
     setNotifications(await api('/notifications', { token: session.token }));
     setStats(await api('/students/dashboard', { token: session.token }));
@@ -297,6 +301,28 @@ function StudentView({ session, setMessage }) {
           ))}
         </div>
         {selectedJob && <div className="detail"><strong>{selectedJob.title}</strong><p>{selectedJob.description}</p><p>{selectedJob.requirements}</p></div>}
+      </section>
+      <section className="panel wide">
+        <div className="panel-title"><Building2 size={20} /><h2>Search companies</h2></div>
+        <div className="filter-grid">
+          <input placeholder="Company name, field, keyword" value={companyFilters.q} onChange={(e) => setCompanyFilters({ ...companyFilters, q: e.target.value })} />
+          <input placeholder="Location" value={companyFilters.location} onChange={(e) => setCompanyFilters({ ...companyFilters, location: e.target.value })} />
+          <button className="primary" onClick={load}>Search companies</button>
+        </div>
+        <div className="company-grid">
+          {companies.map((company) => (
+            <article className="company-card" key={company.id}>
+              <div className="company-logo">{company.logo_url ? <img src={company.logo_url} alt={company.company_name} /> : <Building2 size={22} />}</div>
+              <div>
+                <strong>{company.company_name}</strong>
+                <p>{company.description || 'No company description yet.'}</p>
+                <span>{company.address || 'Flexible location'} - {company.approved_internships} approved internships</span>
+                {company.website && <a href={company.website} target="_blank" rel="noreferrer">Visit website</a>}
+              </div>
+            </article>
+          ))}
+          {companies.length === 0 && <p className="empty">No companies match the current filters.</p>}
+        </div>
       </section>
       <section className="panel wide"><div className="panel-title"><ClipboardList size={20} /><h2>My applications</h2></div><StatusTable rows={applications} /></section>
     </div>

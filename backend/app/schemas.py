@@ -66,6 +66,14 @@ class CompanyRead(CompanyBase):
     model_config = {"from_attributes": True}
 
 
+class CompanySearchRead(CompanyBase):
+    id: int
+    approved_internships: int = 0
+    total_internships: int = 0
+
+    model_config = {"from_attributes": True}
+
+
 class InternshipPostCreate(BaseModel):
     title: str
     description: str
