@@ -14,6 +14,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import './styles.css';
+import heroImage from './assets/hero-internship.png';
 
 function defaultApiUrl() {
   if (typeof window === 'undefined') return 'http://localhost:8000';
@@ -77,41 +78,71 @@ function App() {
     setMessage('');
   }
 
-  return (
-    <main className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark"><GraduationCap size={24} /></div>
-          <div>
-            <strong>Internship Portal</strong>
-            <span>Local Complete MVP</span>
-          </div>
-        </div>
-        <nav className="nav">
-          <span><Briefcase size={18} /> Internships</span>
-          <span><FileText size={18} /> CV Storage</span>
-          <span><ShieldCheck size={18} /> Role Access</span>
-          <span><Bell size={18} /> Notifications</span>
-        </nav>
-        {user && <button className="ghost" onClick={logout}><LogOut size={18} /> Sign out</button>}
-      </aside>
+  if (!user) {
+    return (
+      <main className="public-shell">
+        <PublicNav mode={mode} setMode={setMode} />
+        {message && <div className="notice floating">{message}</div>}
+        <AuthPanel mode={mode} setMode={setMode} onAuth={saveSession} setMessage={setMessage} />
+      </main>
+    );
+  }
 
+  return (
+    <main className="app-shell">
+      <aside className="sidebar">
+        <Logo />
+        <nav className="nav">
+          <span className="active"><Briefcase size={18} /> Dashboard</span>
+          <span><FileText size={18} /> Applications</span>
+          <span><Bell size={18} /> Notifications</span>
+          <span><ShieldCheck size={18} /> Settings</span>
+        </nav>
+      </aside>
       <section className="workspace">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">Cloud-based Student Internship Portal</p>
-            <h1>{user ? `Welcome, ${user.name}` : 'Find and manage internships'}</h1>
+          <Logo compact />
+          <div className="top-actions">
+            <Bell size={18} />
+            <span className={`role ${user.role}`}>{user.role}</span>
+            <button className="ghost dark" onClick={logout}><LogOut size={18} /> Sign out</button>
           </div>
-          {user && <span className={`role ${user.role}`}>{user.role}</span>}
         </header>
+        <div className="page-title">
+          <p className="eyebrow">Cloud-based Student Internship Portal</p>
+          <h1>Welcome, {user.name}</h1>
+        </div>
         {message && <div className="notice">{message}</div>}
-        {!user ? (
-          <AuthPanel mode={mode} setMode={setMode} onAuth={saveSession} setMessage={setMessage} />
-        ) : (
-          <Dashboard session={session} setMessage={setMessage} />
-        )}
+        <Dashboard session={session} setMessage={setMessage} />
       </section>
     </main>
+  );
+}
+
+function Logo({ compact = false }) {
+  return (
+    <div className={`brand ${compact ? 'compact-brand' : ''}`}>
+      <div className="brand-mark"><Briefcase size={20} /></div>
+      {!compact && <strong>InternPortal</strong>}
+    </div>
+  );
+}
+
+function PublicNav({ mode, setMode }) {
+  return (
+    <header className="public-nav">
+      <Logo />
+      <nav>
+        <a className="active">Trang chủ</a>
+        <a>Việc làm</a>
+        <a>Công ty</a>
+        <a>Về chúng tôi</a>
+      </nav>
+      <div className="nav-actions">
+        <button className="outline" onClick={() => setMode('login')}>Đăng nhập</button>
+        <button className="primary" onClick={() => setMode('register')}>Đăng ký</button>
+      </div>
+    </header>
   );
 }
 
@@ -133,8 +164,27 @@ function AuthPanel({ mode, setMode, onAuth, setMessage }) {
 
   return (
     <section className="auth-grid">
-      <form className="panel" onSubmit={submit}>
+      <div className="hero-copy">
+        <p className="eyebrow">Nền tảng thực tập sinh viên</p>
+        <h1>Tìm kiếm thực tập <span>phù hợp với bạn</span></h1>
+        <p className="hero-text">Khám phá cơ hội thực tập từ các công ty, xây dựng hồ sơ và theo dõi trạng thái ứng tuyển trong một cổng duy nhất.</p>
+        <div className="hero-search">
+          <Search size={18} />
+          <span>Tìm kiếm vị trí, kỹ năng, công ty...</span>
+          <button>Tìm kiếm</button>
+        </div>
+        <div className="chips"><span>IT</span><span>Marketing</span><span>Design</span><span>Business</span><span>Data</span></div>
+        <img className="hero-image" src={heroImage} alt="Student searching internships on a laptop" />
+        <div className="hero-stats">
+          <article><Briefcase /><strong>1,200+</strong><span>Vị trí thực tập</span></article>
+          <article><Building2 /><strong>350+</strong><span>Công ty đối tác</span></article>
+          <article><GraduationCap /><strong>5,000+</strong><span>Sinh viên ứng tuyển</span></article>
+        </div>
+      </div>
+      <form className="auth-card" onSubmit={submit}>
+        <Logo />
         <div className="panel-title"><UserPlus size={20} /><h2>{mode === 'login' ? 'Login' : 'Create account'}</h2></div>
+        <p className="form-subtitle">{mode === 'login' ? 'Chào mừng bạn quay trở lại!' : 'Tạo tài khoản để bắt đầu quản lý thực tập.'}</p>
         {mode === 'register' && (
           <>
             <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
@@ -146,12 +196,6 @@ function AuthPanel({ mode, setMode, onAuth, setMessage }) {
         <button className="primary" type="submit">{mode === 'login' ? 'Login' : 'Register'}</button>
         <button className="link" type="button" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Need an account?' : 'Already have an account?'}</button>
       </form>
-      <div className="cloud-panel">
-        <div className="cloud-row"><Building2 /> React local UI</div>
-        <div className="cloud-row"><Briefcase /> FastAPI backend</div>
-        <div className="cloud-row"><FileText /> CV file links</div>
-        <div className="cloud-row"><ShieldCheck /> SQLite local DB</div>
-      </div>
     </section>
   );
 }
