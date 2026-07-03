@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_role
 from app.database import get_db
 from sqlalchemy import or_
 
-from app.models import Application, ApplicationStatus, Company, InternshipPost, Notification, PostStatus, Skill, User, UserRole
+from app.models import Application, ApplicationStatus, Company, InternshipPost, PostStatus, Skill, User, UserRole
+from app.notifications import list_user_notifications, mark_user_notification_read
 from app.schemas import CompanySearchRead, DashboardStats, NotificationRead, SkillRead
 
 router = APIRouter(tags=["common"])
@@ -17,7 +18,13 @@ def list_skills(db: Session = Depends(get_db)):
 
 
 @router.get("/companies", response_model=list[CompanySearchRead])
-def search_companies(q: str | None = None, location: str | None = None, db: Session = Depends(get_db)):
+def search_companies(
+    q: str | None = None,
+    location: str | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
     query = db.query(Company).join(User).filter(User.is_active.is_(True))
     if q:
         like = f"%{q}%"
@@ -31,7 +38,7 @@ def search_companies(q: str | None = None, location: str | None = None, db: Sess
     if location:
         query = query.filter(Company.address.ilike(f"%{location}%"))
 
-    companies = query.order_by(Company.company_name.asc()).all()
+    companies = query.order_by(Company.company_name.asc()).offset(offset).limit(limit).all()
     result = []
     for company in companies:
         result.append(
@@ -51,15 +58,13 @@ def search_companies(q: str | None = None, location: str | None = None, db: Sess
 
 @router.get("/notifications", response_model=list[NotificationRead])
 def list_notifications(
+    is_read: bool | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return (
-        db.query(Notification)
-        .filter(Notification.user_id == current_user.id)
-        .order_by(Notification.created_at.desc())
-        .all()
-    )
+    return list_user_notifications(db, current_user.id, limit=limit, offset=offset, is_read=is_read)
 
 
 @router.patch("/notifications/{notification_id}/read", response_model=NotificationRead)
@@ -68,18 +73,9 @@ def mark_notification_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    notification = (
-        db.query(Notification)
-        .filter(Notification.id == notification_id, Notification.user_id == current_user.id)
-        .first()
-    )
+    notification = mark_user_notification_read(db, current_user.id, notification_id)
     if not notification:
-        from fastapi import HTTPException, status
-
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
-    notification.is_read = True
-    db.commit()
-    db.refresh(notification)
     return notification
 
 

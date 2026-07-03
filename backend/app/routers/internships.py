@@ -1,19 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Company, InternshipPost, PostStatus, User
+from app.internship_service import list_internship_posts, serialize_post
+from app.models import InternshipPost, PostStatus, User
 from app.schemas import InternshipPostRead
 
 router = APIRouter(prefix="/internships", tags=["internships"])
-
-
-def serialize_post(post: InternshipPost) -> InternshipPostRead:
-    data = InternshipPostRead.model_validate(post)
-    data.company_name = post.company.company_name if post.company else None
-    return data
 
 
 @router.get("", response_model=list[InternshipPostRead])
@@ -23,27 +17,22 @@ def list_internships(
     location: str | None = None,
     skill: str | None = None,
     work_type: str | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(InternshipPost).filter(InternshipPost.status == PostStatus.approved)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            or_(
-                InternshipPost.title.ilike(like),
-                InternshipPost.description.ilike(like),
-                InternshipPost.requirements.ilike(like),
-            )
-        )
-    if company:
-        query = query.join(Company).filter(Company.company_name.ilike(f"%{company}%"))
-    if skill:
-        query = query.filter(InternshipPost.requirements.ilike(f"%{skill}%"))
-    if location:
-        query = query.filter(InternshipPost.location.ilike(f"%{location}%"))
-    if work_type:
-        query = query.filter(InternshipPost.work_type == work_type)
-    return [serialize_post(post) for post in query.order_by(InternshipPost.created_at.desc()).all()]
+    posts = list_internship_posts(
+        db,
+        q=q,
+        company=company,
+        location=location,
+        skill=skill,
+        work_type=work_type,
+        post_status=PostStatus.approved,
+        limit=limit,
+        offset=offset,
+    )
+    return [serialize_post(post) for post in posts]
 
 
 @router.get("/{internship_id}", response_model=InternshipPostRead)

@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models import ApplicationStatus, PostStatus, UserRole
 
@@ -37,10 +37,24 @@ class StudentProfileBase(BaseModel):
     university: str | None = None
     major: str | None = None
     skills: str | None = None
-    gpa: float | None = None
+    gpa: float | None = Field(default=None, ge=0, le=4)
     experience: str | None = None
     github: str | None = None
     linkedin: str | None = None
+
+    @field_validator("github", "linkedin", mode="before")
+    @classmethod
+    def empty_profile_url_to_none(cls, value):
+        if value == "":
+            return None
+        return value
+
+    @field_validator("github", "linkedin")
+    @classmethod
+    def validate_profile_url(cls, value):
+        if value and not value.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
+        return value
 
 
 class StudentProfileRead(StudentProfileBase):
@@ -57,6 +71,20 @@ class CompanyBase(BaseModel):
     website: str | None = None
     address: str | None = None
     logo_url: str | None = None
+
+    @field_validator("website", "logo_url", mode="before")
+    @classmethod
+    def empty_company_url_to_none(cls, value):
+        if value == "":
+            return None
+        return value
+
+    @field_validator("website", "logo_url")
+    @classmethod
+    def validate_company_url(cls, value):
+        if value and not value.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
+        return value
 
 
 class CompanyRead(CompanyBase):
@@ -82,11 +110,40 @@ class InternshipPostCreate(BaseModel):
     work_type: str | None = None
     allowance: str | None = None
     duration: str | None = None
-    quantity: int | None = None
+    quantity: int | None = Field(default=None, ge=1)
     deadline: str | None = None
 
+    @field_validator("deadline", mode="before")
+    @classmethod
+    def empty_deadline_to_none(cls, value):
+        if value == "":
+            return None
+        return value
 
-class InternshipPostRead(InternshipPostCreate):
+    @field_validator("deadline")
+    @classmethod
+    def validate_deadline(cls, value):
+        if not value:
+            return value
+        try:
+            deadline = date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("deadline must use YYYY-MM-DD") from exc
+        if deadline < date.today():
+            raise ValueError("deadline cannot be in the past")
+        return value
+
+
+class InternshipPostRead(BaseModel):
+    title: str
+    description: str
+    requirements: str | None = None
+    location: str | None = None
+    work_type: str | None = None
+    allowance: str | None = None
+    duration: str | None = None
+    quantity: int | None = None
+    deadline: str | None = None
     id: int
     company_id: int
     company_name: str | None = None

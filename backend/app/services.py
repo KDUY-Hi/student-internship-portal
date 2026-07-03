@@ -8,6 +8,22 @@ from app.config import get_settings
 
 
 settings = get_settings()
+MAX_CV_SIZE_BYTES = 5 * 1024 * 1024
+
+
+def validate_cv_file(file: UploadFile) -> None:
+    if file.content_type not in {
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CV must be a PDF or Word document")
+
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+    if size > MAX_CV_SIZE_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CV file must be 5MB or smaller")
 
 
 def upload_cv_to_s3(file: UploadFile, user_id: int) -> str:

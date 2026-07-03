@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth import require_role
+from app.auth import hash_password
 from app.database import get_db
-from app.models import Application, InternshipPost, PostStatus, Skill, StudentProfile, User, UserRole
+from app.models import Application, Company, InternshipPost, PostStatus, Skill, StudentProfile, User, UserRole
 from app.notifications import create_notification
 from app.routers.internships import serialize_post
 from app.schemas import (
@@ -12,6 +13,7 @@ from app.schemas import (
     InternshipStatusUpdate,
     SkillCreate,
     SkillRead,
+    UserCreate,
     UserRead,
     UserStatusUpdate,
 )
@@ -20,8 +22,47 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/users", response_model=list[UserRead])
-def list_users(db: Session = Depends(get_db), current_user: User = Depends(require_role(UserRole.admin))):
-    return db.query(User).order_by(User.created_at.desc()).all()
+def list_users(
+    role: UserRole | None = None,
+    is_active: bool | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    query = db.query(User)
+    if role:
+        query = query.filter(User.role == role)
+    if is_active is not None:
+        query = query.filter(User.is_active.is_(is_active))
+    return query.order_by(User.created_at.desc()).offset(offset).limit(limit).all()
+
+
+@router.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    existing = db.query(User).filter(User.email == payload.email).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+    user = User(
+        name=payload.name,
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+    )
+    db.add(user)
+    db.flush()
+    if payload.role == UserRole.student:
+        db.add(StudentProfile(user_id=user.id))
+    elif payload.role == UserRole.company:
+        db.add(Company(user_id=user.id, company_name=payload.name))
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.patch("/users/{user_id}/status", response_model=UserRead)
@@ -43,14 +84,35 @@ def update_user_status(
 
 
 @router.get("/internships/pending", response_model=list[InternshipPostRead])
-def pending_internships(db: Session = Depends(get_db), current_user: User = Depends(require_role(UserRole.admin))):
-    posts = db.query(InternshipPost).filter(InternshipPost.status == PostStatus.pending).order_by(InternshipPost.created_at.desc()).all()
+def pending_internships(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    posts = (
+        db.query(InternshipPost)
+        .filter(InternshipPost.status == PostStatus.pending)
+        .order_by(InternshipPost.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return [serialize_post(post) for post in posts]
 
 
 @router.get("/internships", response_model=list[InternshipPostRead])
-def all_internships(db: Session = Depends(get_db), current_user: User = Depends(require_role(UserRole.admin))):
-    posts = db.query(InternshipPost).order_by(InternshipPost.created_at.desc()).all()
+def all_internships(
+    post_status: PostStatus | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    query = db.query(InternshipPost)
+    if post_status:
+        query = query.filter(InternshipPost.status == post_status)
+    posts = query.order_by(InternshipPost.created_at.desc()).offset(offset).limit(limit).all()
     return [serialize_post(post) for post in posts]
 
 

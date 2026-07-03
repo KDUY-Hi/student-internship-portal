@@ -62,12 +62,20 @@ Admin:
 |   |   +-- schemas.py
 |   |   +-- services.py
 |   +-- tests/
+|   +-- alembic/
 |   +-- .env.example
+|   +-- alembic.ini
 |   +-- pytest.ini
 |   +-- requirements.txt
+|   +-- seed.py
 |
 +-- frontend/
     +-- src/
+    |   +-- api/
+    |   +-- components/
+    |   +-- hooks/
+    |   +-- pages/
+    |   +-- utils/
     |   +-- main.jsx
     |   +-- styles.css
     +-- .env.example
@@ -85,8 +93,12 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
+alembic upgrade head
+python seed.py
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Nếu chỉ chạy demo nhanh bằng SQLite local, backend vẫn tự tạo bảng khi khởi động. Tuy nhiên cách khuyến nghị mới là chạy `alembic upgrade head` trước, sau đó chạy `python seed.py` để có tài khoản demo.
 
 Backend chạy tại:
 
@@ -137,21 +149,50 @@ http://10.215.198.254:8000
 
 Frontend mặc định sẽ tự gọi backend theo cùng hostname và port `8000`. Khi deploy thật, có thể cấu hình `VITE_API_URL` trong `frontend/.env`.
 
-## Tài khoản đăng nhập
+Frontend hiện đã tách theo module:
 
-Dự án chưa seed sẵn tài khoản. Khi chạy lần đầu, hãy dùng màn hình **Create account** để tạo 3 loại tài khoản:
+- `src/api/`: API client và xử lý lỗi phiên đăng nhập.
+- `src/hooks/`: hook routing nội bộ.
+- `src/components/`: component dùng chung như layout, notification, bảng, trạng thái loading/error.
+- `src/pages/`: các trang theo role `student`, `company`, `admin`.
+- `src/utils/`: helper chuyển đổi dữ liệu form.
 
-- Student: chọn role `student`
-- Company: chọn role `company`
-- Admin: chọn role `admin`
-
-Ví dụ có thể tạo:
+Các URL chính của frontend:
 
 ```text
-student@example.com / 123456
-company@example.com / 123456
-admin@example.com / 123456
+/student/home
+/student/jobs
+/student/companies
+/student/applications
+/student/profile
+/company/home
+/company/jobs
+/company/applicants
+/company/profile
+/admin/home
+/admin/users
+/admin/posts
+/admin/skills
 ```
+
+## Tài khoản đăng nhập và seed dữ liệu
+
+Admin không được đăng ký công khai từ màn hình đăng ký. Khi chạy demo lần đầu, hãy seed tài khoản mẫu:
+
+```powershell
+cd backend
+python seed.py
+```
+
+Script seed tạo các tài khoản:
+
+```text
+student@example.com / Password123!
+company@example.com / Password123!
+admin@example.com / Password123!
+```
+
+Sau khi có admin, admin có thể tạo thêm tài khoản qua API quản trị. Màn hình đăng ký công khai chỉ cho phép tạo `student` hoặc `company`.
 
 ## Luồng demo đề xuất
 
@@ -159,7 +200,7 @@ admin@example.com / 123456
 2. Đăng nhập bằng tài khoản company.
 3. Tạo hồ sơ công ty.
 4. Đăng một vị trí thực tập.
-5. Đăng ký hoặc đăng nhập tài khoản `admin`.
+5. Đăng nhập tài khoản `admin` đã seed.
 6. Admin duyệt bài đăng thực tập.
 7. Đăng ký hoặc đăng nhập tài khoản `student`.
 8. Student tạo hồ sơ, upload CV.
@@ -177,6 +218,20 @@ DATABASE_URL=sqlite:///./internship_portal.db
 ```
 
 Khi chạy backend, database local sẽ được tạo tự động.
+
+Dự án đã có Alembic migrations để quản lý thay đổi schema. Sau khi cài dependencies, có thể chạy:
+
+```powershell
+cd backend
+alembic upgrade head
+```
+
+Khi cần tạo migration mới sau khi sửa model:
+
+```powershell
+cd backend
+alembic revision --autogenerate -m "describe change"
+```
 
 Nếu bạn đã chạy phiên bản cũ của dự án trước khi schema được bổ sung, hãy xóa file SQLite cũ rồi chạy lại backend:
 
@@ -226,6 +281,7 @@ Common:
 Student:
 - `GET /internships`
 - `GET /internships/{id}`
+- `GET /students/profile`
 - `POST /students/profile`
 - `PATCH /students/profile`
 - `POST /students/upload-cv`
@@ -233,6 +289,7 @@ Student:
 - `GET /applications/me`
 
 Company:
+- `GET /company/profile`
 - `POST /company/profile`
 - `PATCH /company/profile`
 - `POST /company/internships`
@@ -243,6 +300,7 @@ Company:
 
 Admin:
 - `GET /admin/users`
+- `POST /admin/users`
 - `PATCH /admin/users/{id}/status`
 - `GET /admin/dashboard`
 - `POST /admin/skills`
@@ -259,6 +317,15 @@ cd backend
 python -m pytest
 ```
 
+Kiểm tra frontend production build:
+
+```powershell
+cd frontend
+npm.cmd run build
+```
+
+Lưu ý: script build dùng `vite build .` để build ổn định trên Windows khi đường dẫn thư mục có dấu tiếng Việt.
+
 Test hiện tại kiểm tra luồng chính:
 
 - Company tạo bài đăng
@@ -267,6 +334,8 @@ Test hiện tại kiểm tra luồng chính:
 - Company cập nhật trạng thái ứng tuyển
 - Company xem link CV của ứng viên
 - Notification được tạo khi trạng thái thay đổi
+- Duplicate apply, deadline hết hạn, tài khoản bị khóa và phân quyền bị chặn đúng
+- Validation cho GPA, số lượng tuyển và kích thước file CV
 - Admin dashboard và skills hoạt động
 - API admin bị chặn nếu user không có quyền admin
 
