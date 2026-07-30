@@ -5,14 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import admin, auth, common, company, internships, student
+from app.routers import admin, analytics, auth, common, company, forum, internships, student
 
 
 settings = get_settings()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("internship-portal")
 
-Base.metadata.create_all(bind=engine)
+if settings.environment.lower() != "production":
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title=settings.app_name)
 
@@ -30,7 +31,9 @@ app.include_router(common.router)
 app.include_router(internships.router)
 app.include_router(student.router)
 app.include_router(company.router)
+app.include_router(forum.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)
 
 
 @app.get("/health")

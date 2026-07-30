@@ -3,12 +3,15 @@ from sqlalchemy.orm import Session
 
 from app.auth import require_role
 from app.application_service import list_company_applications, serialize_application, update_company_application_status
+from app.config import get_settings
 from app.database import get_db
-from app.models import Application, ApplicationStatus, Company, InternshipPost, User, UserRole
+from app.models import Application, ApplicationStatus, Company, InternshipPost, JobPosition, User, UserRole
 from app.routers.internships import serialize_post
 from app.schemas import ApplicationRead, ApplicationStatusUpdate, CompanyBase, CompanyRead, InternshipPostCreate, InternshipPostRead
+from app.services import create_presigned_cv_url
 
 router = APIRouter(prefix="/company", tags=["company"])
+settings = get_settings()
 
 
 def get_or_create_company(db: Session, user: User, payload: CompanyBase | None = None) -> Company:
@@ -54,7 +57,16 @@ def create_internship(
     current_user: User = Depends(require_role(UserRole.company)),
 ):
     company = get_or_create_company(db, current_user)
-    post = InternshipPost(company_id=company.id, **payload.model_dump())
+    payload_data = payload.model_dump()
+    position_id = payload_data.get("position_id")
+    if not position_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a job position")
+    position = db.get(JobPosition, position_id)
+    if not position or not position.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job position not found")
+    if not payload_data.get("title"):
+        payload_data["title"] = position.name
+    post = InternshipPost(company_id=company.id, **payload_data)
     db.add(post)
     db.commit()
     db.refresh(post)
@@ -115,4 +127,4 @@ def get_application_cv(
     application = db.get(Application, application_id)
     if not application or application.internship.company_id != company.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    return {"cv_url": application.cv_url}
+    return {"cv_url": create_presigned_cv_url(application.cv_url), "expires_in": settings.s3_presigned_url_expire_seconds}

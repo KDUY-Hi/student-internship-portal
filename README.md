@@ -98,7 +98,7 @@ python seed.py
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Nếu chỉ chạy demo nhanh bằng SQLite local, backend vẫn tự tạo bảng khi khởi động. Tuy nhiên cách khuyến nghị mới là chạy `alembic upgrade head` trước, sau đó chạy `python seed.py` để có tài khoản demo.
+Nếu chỉ chạy demo nhanh bằng SQLite local, backend vẫn tự tạo bảng khi khởi động. Trong `ENVIRONMENT=production`, backend không tự tạo bảng; cần chạy `alembic upgrade head` trước khi start app. Cách khuyến nghị là chạy `alembic upgrade head`, sau đó chạy `python seed.py` để có tài khoản demo.
 
 Backend chạy tại:
 
@@ -165,6 +165,8 @@ Các URL chính của frontend:
 /student/companies
 /student/applications
 /student/profile
+/student/forum
+/student/forum/:id
 /company/home
 /company/jobs
 /company/applicants
@@ -172,6 +174,8 @@ Các URL chính của frontend:
 /admin/home
 /admin/users
 /admin/posts
+/admin/job-positions
+/admin/forum
 /admin/skills
 ```
 
@@ -247,6 +251,7 @@ Các bảng chính:
 - `student_profiles`: hồ sơ sinh viên
 - `companies`: hồ sơ doanh nghiệp
 - `internship_posts`: bài đăng thực tập
+- `job_positions`: danh mục vị trí tuyển dụng chuẩn hóa
 - `applications`: hồ sơ ứng tuyển
 - `skills`: danh sách kỹ năng dùng để lọc và nhập liệu
 - `notifications`: thông báo trong hệ thống
@@ -257,11 +262,63 @@ Quan hệ chính:
 users 1 - 1 student_profiles
 users 1 - 1 companies
 companies 1 - n internship_posts
+job_positions 1 - n internship_posts
 student_profiles 1 - n applications
 internship_posts 1 - n applications
 ```
 
-CV không lưu trực tiếp trong database. File CV được lưu trên S3, database chỉ lưu URL hoặc key của file.
+CV không lưu trực tiếp trong database. File CV được lưu trên S3 private bucket, database chỉ lưu object key hoặc storage reference. Khi cần xem CV, backend tạo presigned URL tạm thời cho user có quyền truy cập.
+
+## Module phân tích yêu cầu tuyển dụng
+
+Hệ thống đã chuẩn hóa thêm dữ liệu bài đăng để phân tích thị trường tuyển dụng:
+
+- `position_id`: vị trí tuyển dụng chọn từ bảng `job_positions`
+- `required_skills`: kỹ năng yêu cầu, nhập dạng danh sách phân tách bằng dấu phẩy
+- `experience_level`: Intern, Fresher, Junior, Middle, Senior
+- `job_type`: Internship, Full-time, Part-time, Contract, Freelance
+- `salary_min`, `salary_max`: khoảng lương
+- `education_requirement`: yêu cầu học vấn
+- `location`: địa điểm tuyển dụng
+
+Frontend sinh viên có trang `Career Market Insights` tại:
+
+```text
+/student/insights
+```
+
+Trang này hiển thị kỹ năng được yêu cầu nhiều, vị trí tuyển nhiều, yêu cầu kinh nghiệm, xu hướng lương và địa điểm tuyển dụng.
+
+Admin quản lý danh sách vị trí chuẩn tại:
+
+```text
+/admin/job-positions
+```
+
+Admin có thể thêm, sửa, ẩn/hiện và xóa vị trí tuyển dụng. Mỗi vị trí có thể gán ngành nghề và danh sách kỹ năng gợi ý. Khi công ty đăng tuyển, công ty phải chọn vị trí từ danh sách đang active; các kỹ năng gợi ý sẽ hiện thành chip để tick chọn.
+
+## Module diễn đàn cộng đồng chuyên môn
+
+Hệ thống có các cộng đồng theo chuyên môn như Information Technology, Marketing, Logistics, Business, Food & Beverage, Hospitality và Part-time Jobs.
+
+Ứng viên có thể:
+
+- Đăng bài viết hoặc đặt câu hỏi
+- Chọn loại bài: Question, Academic Post, Experience Sharing, Resource, Discussion
+- Bình luận vào bài viết
+- Like bài viết
+- Lưu bài viết
+- Chia sẻ liên kết bài viết
+
+Bài `Academic Post` và `Resource` mặc định ở trạng thái `Pending` để admin duyệt trước. Các loại bài khác được hiển thị ngay ở cộng đồng.
+
+Admin quản trị diễn đàn tại:
+
+```text
+/admin/forum
+```
+
+Admin có thể thêm/ẩn community category, duyệt bài, ẩn bài, từ chối bài, xóa bài không phù hợp và khóa người dùng spam qua màn hình quản lý người dùng.
 
 ## API chính
 
@@ -272,11 +329,22 @@ Auth:
 
 Common:
 - `GET /skills`
+- `GET /job-positions`
 - `GET /companies`
 - `GET /notifications`
 - `PATCH /notifications/{id}/read`
 - `GET /students/dashboard`
 - `GET /company/dashboard`
+
+Forum:
+- `GET /forum/categories`
+- `GET /forum/posts`
+- `POST /forum/posts`
+- `GET /forum/posts/{id}`
+- `GET /forum/posts/{id}/comments`
+- `POST /forum/posts/{id}/comments`
+- `POST /forum/posts/{id}/like`
+- `POST /forum/posts/{id}/save`
 
 Student:
 - `GET /internships`
@@ -295,8 +363,16 @@ Company:
 - `POST /company/internships`
 - `GET /company/internships`
 - `GET /company/applications`
-- `GET /company/applications/{id}/cv`
+- `GET /company/applications/{id}/cv` - tạo presigned URL tạm thời để xem CV ứng viên
 - `PATCH /company/applications/{id}/status`
+
+Analytics:
+- `GET /analytics/top-skills`
+- `GET /analytics/top-positions`
+- `GET /analytics/top-locations`
+- `GET /analytics/salary-summary`
+- `GET /analytics/skill-by-position/{position_id}`
+- `GET /analytics/job-market-summary`
 
 Admin:
 - `GET /admin/users`
@@ -304,6 +380,17 @@ Admin:
 - `PATCH /admin/users/{id}/status`
 - `GET /admin/dashboard`
 - `POST /admin/skills`
+- `GET /admin/job-positions`
+- `POST /admin/job-positions`
+- `PATCH /admin/job-positions/{id}`
+- `DELETE /admin/job-positions/{id}`
+- `GET /admin/forum/categories`
+- `POST /admin/forum/categories`
+- `PATCH /admin/forum/categories/{id}`
+- `DELETE /admin/forum/categories/{id}`
+- `GET /admin/forum/posts`
+- `PATCH /admin/forum/posts/{id}/status`
+- `DELETE /admin/forum/posts/{id}`
 - `GET /admin/internships`
 - `GET /admin/internships/pending`
 - `PATCH /admin/internships/{id}/approve`
@@ -332,10 +419,12 @@ Test hiện tại kiểm tra luồng chính:
 - Admin duyệt bài
 - Student upload CV và apply
 - Company cập nhật trạng thái ứng tuyển
-- Company xem link CV của ứng viên
+- Company xem CV ứng viên qua presigned URL
 - Notification được tạo khi trạng thái thay đổi
 - Duplicate apply, deadline hết hạn, tài khoản bị khóa và phân quyền bị chặn đúng
 - Validation cho GPA, số lượng tuyển và kích thước file CV
+- Analytics thị trường tuyển dụng, top skills, top positions và skill theo từng job position
+- Forum community: đăng bài, bài cần duyệt, comment, like, save và admin moderation
 - Admin dashboard và skills hoạt động
 - API admin bị chặn nếu user không có quyền admin
 
@@ -361,7 +450,7 @@ CV trên S3:
 ```env
 AWS_REGION=ap-southeast-1
 S3_BUCKET_NAME=your-cv-bucket
-S3_PUBLIC_BASE_URL=https://your-cv-bucket.s3.ap-southeast-1.amazonaws.com
+S3_PRESIGNED_URL_EXPIRE_SECONDS=300
 ```
 
 Frontend trên S3 Static Website Hosting:
@@ -375,6 +464,17 @@ aws s3 sync dist/ s3://your-frontend-bucket --delete
 CloudWatch:
 - Cài CloudWatch Agent trên EC2.
 - Đẩy log backend stdout/stderr lên CloudWatch Logs.
+
+CORS và cookie khi deploy production:
+
+```env
+BACKEND_CORS_ORIGINS=https://your-frontend-domain.com
+BACKEND_CORS_ORIGIN_REGEX=
+REFRESH_COOKIE_SECURE=true
+REFRESH_COOKIE_SAMESITE=none
+```
+
+Ở production, backend chỉ chấp nhận CORS origin dạng HTTPS cụ thể, không dùng wildcard và không dùng regex local/LAN. Nếu frontend và API dùng hai origin khác nhau, refresh cookie cần `SameSite=none` và `Secure=true`.
 
 ## Troubleshooting
 

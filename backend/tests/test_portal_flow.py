@@ -1,11 +1,20 @@
+import os
+import tempfile
+from pathlib import Path
 from uuid import uuid4
 
+os.environ["DATABASE_URL"] = f"sqlite:///{(Path(tempfile.gettempdir()) / 'student_internship_portal_test.db').as_posix()}"
+os.environ["REFRESH_COOKIE_SECURE"] = "false"
+
+import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import create_access_token, hash_password
+from app.config import Settings
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import Company, InternshipPost, PostStatus, User, UserRole
+from app.models import Company, ForumCategory, InternshipPost, JobPosition, PostStatus, RefreshToken, User, UserRole
+from app import services
 
 
 Base.metadata.drop_all(bind=engine)
@@ -15,6 +24,38 @@ client = TestClient(app)
 
 def auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def create_position(name: str = "Fullstack Developer") -> int:
+    db = SessionLocal()
+    try:
+        position = JobPosition(
+            name=f"{name} {uuid4().hex[:8]}",
+            category="IT",
+            description="Test position",
+            suggested_skills="React, Node.js, MySQL, Git, AWS",
+            is_active=True,
+        )
+        db.add(position)
+        db.commit()
+        db.refresh(position)
+        return position.id
+    finally:
+        db.close()
+
+
+def create_forum_category(name: str = "Backend") -> int:
+    db = SessionLocal()
+    try:
+        category = db.query(ForumCategory).filter(ForumCategory.name == name).first()
+        if not category:
+            category = ForumCategory(name=name, description="Test community", is_active=True)
+            db.add(category)
+            db.commit()
+            db.refresh(category)
+        return category.id
+    finally:
+        db.close()
 
 
 def register(email: str, role: str):
@@ -61,9 +102,11 @@ def test_student_company_admin_flow():
     assert len(companies.json()) == 1
     assert companies.json()[0]["company_name"] == "AWS Cloud Co"
 
+    position_id = create_position("Cloud Engineer")
     post = client.post(
         "/company/internships",
         json={
+            "position_id": position_id,
             "title": "Cloud Intern",
             "description": "Build AWS projects",
             "requirements": "Python, AWS",
@@ -190,6 +233,103 @@ def test_public_admin_registration_is_blocked():
     assert response.status_code == 403
 
 
+def test_refresh_token_rotation_logout_and_login_rate_limit():
+    suffix = uuid4().hex[:8]
+    auth_client = TestClient(app)
+    registered = auth_client.post(
+        "/auth/register",
+        json={"name": "Secure Student", "email": f"secure-{suffix}@example.com", "password": "Password123!", "role": "student"},
+    )
+    assert registered.status_code == 201
+    first_access_token = registered.json()["access_token"]
+    assert first_access_token
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == f"secure-{suffix}@example.com").first()
+        sessions = db.query(RefreshToken).filter(RefreshToken.user_id == user.id).all()
+        assert len(sessions) == 1
+        assert sessions[0].token_hash
+        assert sessions[0].revoked_at is None
+        first_session_id = sessions[0].id
+    finally:
+        db.close()
+
+    refreshed = auth_client.post("/auth/refresh")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["access_token"]
+
+    db = SessionLocal()
+    try:
+        old_session = db.get(RefreshToken, first_session_id)
+        active_sessions = (
+            db.query(RefreshToken)
+            .filter(RefreshToken.user_id == old_session.user_id, RefreshToken.revoked_at.is_(None))
+            .all()
+        )
+        assert old_session.revoked_at is not None
+        assert old_session.replaced_by_token_id is not None
+        assert len(active_sessions) == 1
+    finally:
+        db.close()
+
+    logout = auth_client.post("/auth/logout")
+    assert logout.status_code == 204
+    after_logout = auth_client.post("/auth/refresh")
+    assert after_logout.status_code == 401
+
+    limited_client = TestClient(app)
+    for attempt in range(5):
+        failed = limited_client.post(
+            "/auth/login",
+            json={"email": f"secure-{suffix}@example.com", "password": f"wrong-{attempt}"},
+        )
+        assert failed.status_code == 401
+    blocked = limited_client.post(
+        "/auth/login",
+        json={"email": f"secure-{suffix}@example.com", "password": "Password123!"},
+    )
+    assert blocked.status_code == 429
+
+
+def test_admin_can_manage_job_positions():
+    suffix = uuid4().hex[:8]
+    admin = create_admin(f"admin-position-{suffix}@example.com")
+
+    created = client.post(
+        "/admin/job-positions",
+        json={
+            "name": f"Fullstack Developer {suffix}",
+            "category": "IT",
+            "description": "Build web apps",
+            "suggested_skills": "React, Node.js, MySQL, Git, AWS",
+        },
+        headers=auth_headers(admin),
+    )
+    assert created.status_code == 201
+    position_id = created.json()["id"]
+
+    updated = client.patch(
+        f"/admin/job-positions/{position_id}",
+        json={"category": "Software", "is_active": False},
+        headers=auth_headers(admin),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["category"] == "Software"
+    assert updated.json()["is_active"] is False
+
+    public_positions = client.get("/job-positions")
+    assert public_positions.status_code == 200
+    assert all(item["id"] != position_id for item in public_positions.json())
+
+    admin_positions = client.get("/admin/job-positions", headers=auth_headers(admin))
+    assert admin_positions.status_code == 200
+    assert any(item["id"] == position_id for item in admin_positions.json())
+
+    deleted = client.delete(f"/admin/job-positions/{position_id}", headers=auth_headers(admin))
+    assert deleted.status_code == 204
+
+
 def test_duplicate_apply_expired_deadline_account_locked_and_role_boundaries():
     suffix = uuid4().hex[:8]
     student = register(f"student-extra-{suffix}@example.com", "student")
@@ -203,16 +343,17 @@ def test_duplicate_apply_expired_deadline_account_locked_and_role_boundaries():
     )
     assert profile.status_code == 200
 
+    position_id = create_position("Backend Developer")
     invalid_quantity = client.post(
         "/company/internships",
-        json={"title": "Bad Quantity", "description": "Invalid", "quantity": 0},
+        json={"position_id": position_id, "title": "Bad Quantity", "description": "Invalid", "quantity": 0},
         headers=auth_headers(company),
     )
     assert invalid_quantity.status_code == 422
 
     post = client.post(
         "/company/internships",
-        json={"title": "Backend Intern", "description": "API work", "deadline": "2099-12-31"},
+        json={"position_id": position_id, "title": "Backend Intern", "description": "API work", "deadline": "2099-12-31"},
         headers=auth_headers(company),
     )
     assert post.status_code == 201
@@ -281,3 +422,177 @@ def test_duplicate_apply_expired_deadline_account_locked_and_role_boundaries():
         json={"email": f"student-extra-{suffix}@example.com", "password": "Password123!"},
     )
     assert locked_login.status_code == 403
+
+
+def test_job_market_analytics():
+    suffix = uuid4().hex[:8]
+    company_token = register(f"company-analytics-{suffix}@example.com", "company")
+    admin_token = create_admin(f"admin-analytics-{suffix}@example.com")
+
+    profile = client.post(
+        "/company/profile",
+        json={"company_name": "Analytics Co", "description": "Market data", "address": "Ho Chi Minh City"},
+        headers=auth_headers(company_token),
+    )
+    assert profile.status_code == 200
+
+    db = SessionLocal()
+    try:
+        position = JobPosition(name=f"Fullstack Developer {suffix}", category="IT", description="Web product role")
+        db.add(position)
+        db.commit()
+        db.refresh(position)
+        position_id = position.id
+    finally:
+        db.close()
+
+    post = client.post(
+        "/company/internships",
+        json={
+            "position_id": position_id,
+            "title": "Fullstack Developer Intern",
+            "description": "Build web features",
+            "required_skills": "React, Node.js, MySQL, AWS",
+            "requirements": "Fresher with web project experience",
+            "experience_level": "Fresher",
+            "job_type": "Internship",
+            "salary_min": 3000000,
+            "salary_max": 6000000,
+            "education_requirement": "IT students",
+            "location": "Ho Chi Minh City",
+            "deadline": "2099-12-31",
+        },
+        headers=auth_headers(company_token),
+    )
+    assert post.status_code == 201
+    assert client.patch(f"/admin/internships/{post.json()['id']}/approve", headers=auth_headers(admin_token)).status_code == 200
+
+    summary = client.get("/analytics/job-market-summary")
+    assert summary.status_code == 200
+    data = summary.json()
+    assert any(item["label"] == "React" for item in data["top_skills"])
+    assert any(item["label"] == f"Fullstack Developer {suffix}" for item in data["top_positions"])
+    assert data["salary"]["minimum"] == 3000000
+
+    skills = client.get(f"/analytics/skill-by-position/{position_id}")
+    assert skills.status_code == 200
+    assert skills.json()["skills"][0]["label"] in {"React", "Node.js", "MySQL", "AWS"}
+
+
+def test_professional_forum_flow_and_moderation():
+    suffix = uuid4().hex[:8]
+    student = register(f"student-forum-{suffix}@example.com", "student")
+    admin = create_admin(f"admin-forum-{suffix}@example.com")
+    category_id = create_forum_category("Backend")
+
+    question = client.post(
+        "/forum/posts",
+        json={
+            "category_id": category_id,
+            "title": "How to prepare for backend internship?",
+            "content": "Which API project should I build?",
+            "post_type": "Question",
+        },
+        headers=auth_headers(student),
+    )
+    assert question.status_code == 201
+    assert question.json()["status"] == "Approved"
+    post_id = question.json()["id"]
+
+    comment = client.post(
+        f"/forum/posts/{post_id}/comments",
+        json={"content": "Build one CRUD API and deploy it."},
+        headers=auth_headers(student),
+    )
+    assert comment.status_code == 201
+
+    liked = client.post(f"/forum/posts/{post_id}/like", headers=auth_headers(student))
+    assert liked.status_code == 200
+    assert liked.json()["like_count"] == 1
+    saved = client.post(f"/forum/posts/{post_id}/save", headers=auth_headers(student))
+    assert saved.status_code == 200
+    assert saved.json()["is_saved"] is True
+
+    academic = client.post(
+        "/forum/posts",
+        json={
+            "category_id": category_id,
+            "title": "Academic note about REST APIs",
+            "content": "A structured learning note.",
+            "post_type": "Academic Post",
+        },
+        headers=auth_headers(student),
+    )
+    assert academic.status_code == 201
+    assert academic.json()["status"] == "Pending"
+    academic_id = academic.json()["id"]
+
+    public_posts = client.get("/forum/posts", headers=auth_headers(student))
+    assert all(item["id"] != academic_id for item in public_posts.json())
+
+    admin_posts = client.get("/admin/forum/posts", headers=auth_headers(admin))
+    assert admin_posts.status_code == 200
+    assert any(item["id"] == academic_id for item in admin_posts.json())
+
+    approved = client.patch(
+        f"/admin/forum/posts/{academic_id}/status",
+        json={"status": "Approved"},
+        headers=auth_headers(admin),
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "Approved"
+
+    hidden = client.patch(
+        f"/admin/forum/posts/{academic_id}/status",
+        json={"status": "Hidden"},
+        headers=auth_headers(admin),
+    )
+    assert hidden.status_code == 200
+    assert hidden.json()["status"] == "Hidden"
+
+
+def test_s3_cv_references_use_presigned_urls(monkeypatch):
+    class FakeS3Client:
+        def generate_presigned_url(self, operation, Params, ExpiresIn):
+            assert operation == "get_object"
+            assert Params == {"Bucket": "private-cv-bucket", "Key": "cvs/student-1/demo.pdf"}
+            assert ExpiresIn == 600
+            return "https://signed.example.com/cvs/student-1/demo.pdf"
+
+    monkeypatch.setattr(services.settings, "s3_bucket_name", "private-cv-bucket")
+    monkeypatch.setattr(services.settings, "s3_presigned_url_expire_seconds", 600)
+    monkeypatch.setattr(services.boto3, "client", lambda *args, **kwargs: FakeS3Client())
+
+    assert services.create_presigned_cv_url("cvs/student-1/demo.pdf") == "https://signed.example.com/cvs/student-1/demo.pdf"
+
+
+def test_production_cookie_and_cors_settings_are_strict():
+    settings = Settings(
+        environment="production",
+        backend_cors_origins="https://app.example.com",
+        backend_cors_origin_regex="",
+        refresh_cookie_secure=True,
+        refresh_cookie_samesite="None",
+    )
+
+    assert settings.cors_origins == ["https://app.example.com"]
+    assert settings.backend_cors_origin_regex is None
+    assert settings.refresh_cookie_samesite == "none"
+
+    with pytest.raises(ValueError):
+        Settings(
+            environment="production",
+            backend_cors_origins="http://app.example.com",
+            backend_cors_origin_regex="",
+            refresh_cookie_secure=True,
+            refresh_cookie_samesite="none",
+        )
+
+    with pytest.raises(ValueError):
+        Settings(
+            environment="production",
+            backend_cors_origins="https://app.example.com",
+            backend_cors_origin_regex=r"https?://localhost(:\d+)?",
+            refresh_cookie_secure=True,
+            refresh_cookie_samesite="none",
+        )

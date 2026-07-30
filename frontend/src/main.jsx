@@ -6,11 +6,13 @@ import { Sidebar, Topbar } from './components/ui';
 import { AdminPages } from './pages/AdminPages';
 import { CompanyPages } from './pages/CompanyPages';
 import { StudentPages } from './pages/StudentPages';
+import { api, configureAuthHandlers, logoutSession, setAccessToken } from './api/client';
 import { defaultPathForRole, normalizePathForRole, useRoute } from './hooks/useRoute';
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('token') || '');
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || 'null'));
+  const [token, setToken] = useState('');
+  const [user, setUser] = useState(null);
+  const [booting, setBooting] = useState(true);
   const [mode, setMode] = useState('login');
   const [message, setMessage] = useState('');
   const session = useMemo(() => ({ token, user }), [token, user]);
@@ -22,6 +24,34 @@ function App() {
   }, [user, currentPath, pathname]);
 
   useEffect(() => {
+    configureAuthHandlers({
+      onRefresh: (data) => {
+        setAccessToken(data.access_token);
+        setToken(data.access_token);
+        setUser(data.user);
+      },
+      onExpired: () => {
+        setAccessToken('');
+        setToken('');
+        setUser(null);
+      },
+    });
+
+    api('/auth/refresh', { method: 'POST', skipRefresh: true })
+      .then((data) => {
+        setAccessToken(data.access_token);
+        setToken(data.access_token);
+        setUser(data.user);
+      })
+      .catch(() => {
+        setAccessToken('');
+        setToken('');
+        setUser(null);
+      })
+      .finally(() => setBooting(false));
+  }, []);
+
+  useEffect(() => {
     if (!message) return undefined;
     const timeoutId = window.setTimeout(() => setMessage(''), 3000);
     return () => window.clearTimeout(timeoutId);
@@ -29,6 +59,7 @@ function App() {
 
   useEffect(() => {
     function handleAuthExpired() {
+      setAccessToken('');
       setToken('');
       setUser(null);
       setMessage('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
@@ -38,20 +69,22 @@ function App() {
   }, []);
 
   function saveSession(data) {
-    localStorage.setItem('token', data.access_token);
-    localStorage.setItem('user', JSON.stringify(data.user));
+    setAccessToken(data.access_token);
     setToken(data.access_token);
     setUser(data.user);
     navigate(defaultPathForRole(data.user.role));
     setMessage('');
   }
 
-  function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  async function logout() {
+    await logoutSession();
     setToken('');
     setUser(null);
     setMessage('');
+  }
+
+  if (booting) {
+    return <main className="public-shell"><div className="state-box loading-state">Đang kiểm tra phiên đăng nhập...</div></main>;
   }
 
   if (!user) {

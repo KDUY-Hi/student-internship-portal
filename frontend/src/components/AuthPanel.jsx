@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { api, friendlyError } from '../api/client';
 import { Logo } from './ui';
 import heroImage from '../assets/hero-internship.png';
 
 export function AuthPanel({ mode, setMode, onAuth, setMessage }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'student' });
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function submit(event) {
@@ -54,7 +56,26 @@ export function AuthPanel({ mode, setMode, onAuth, setMessage }) {
         )}
 
         <label>Email<input type="email" placeholder="Nhập email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label>
-        <label>Mật khẩu<input type="password" placeholder="Nhập mật khẩu" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></label>
+        <label>
+          Mật khẩu
+          <span className="password-field">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Nhập mật khẩu"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              required
+            />
+            <button
+              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiển thị mật khẩu'}
+              className="password-toggle"
+              type="button"
+              onClick={() => setShowPassword((value) => !value)}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </span>
+        </label>
 
         <button className="primary full" type="submit" disabled={submitting}>{submitting ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
         <p className="switch-mode">

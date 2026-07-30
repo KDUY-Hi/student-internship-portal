@@ -1,42 +1,39 @@
 import React from 'react';
-import { Bell, Briefcase, Building2, ClipboardList, Search, Star, Users } from 'lucide-react';
+import { BarChart3, Bell, Briefcase, ClipboardList, FileText, MessageCircle, Search, Shield, Users } from 'lucide-react';
 import { roleBasePath } from '../hooks/useRoute';
 import { roleLabel } from '../utils/forms';
 
 export function Logo({ light = false }) {
   return (
     <div className={`brand ${light ? 'brand-light' : ''}`}>
-      <strong>topcv</strong>
-      <span />
+      <strong>&lt;Hiring IT /&gt;</strong>
     </div>
   );
 }
 
 export function Sidebar({ role, currentPath, navigate }) {
-  const common = [
-    [`${roleBasePath(role)}/home`, 'Trang chủ', Briefcase],
-    [`${roleBasePath(role)}/notifications`, 'Thông báo', Bell],
-  ];
   const student = [
-    ['/student/jobs', 'Việc làm phù hợp', Search],
-    ['/student/companies', 'Công ty', Building2],
-    ['/student/applications', 'Ứng tuyển của tôi', ClipboardList],
+    ['/student/jobs', 'Tìm cơ hội thực tập', Briefcase],
+    ['/student/forum', 'Diễn đàn', MessageCircle],
+    ['/student/applications', 'Đơn đã nộp', FileText],
   ];
   const company = [
-    ['/company/jobs', 'Tin tuyển dụng', Briefcase],
-    ['/company/applicants', 'Ứng viên', Users],
-    ['/company/profile', 'Hồ sơ công ty', Building2],
+    ['/company/applicants', 'Quản lý ứng viên', Users],
+    ['/company/jobs', 'Bài đăng', Briefcase],
+    ['/company/forum', 'Diễn đàn', MessageCircle],
+    ['/company/stats', 'Thống kê', BarChart3],
   ];
   const admin = [
-    ['/admin/users', 'Quản lý người dùng', Users],
-    ['/admin/posts', 'Quản lý tin tuyển dụng', ClipboardList],
-    ['/admin/skills', 'Quản lý kỹ năng', Star],
+    ['/admin/posts', 'Kiểm duyệt', Shield],
+    ['/admin/users', 'Người dùng', Users],
+    ['/admin/forum', 'Diễn đàn', MessageCircle],
+    ['/admin/reports', 'Báo cáo', BarChart3],
   ];
-  const items = [...common, ...(role === 'company' ? company : role === 'admin' ? admin : student)];
+  const items = role === 'company' ? company : role === 'admin' ? admin : student;
 
   return (
     <aside className="sidebar">
-      <Logo light={role === 'admin'} />
+      <Logo light />
       <nav className="nav">
         {items.map(([href, label, Icon]) => (
           <a
@@ -53,6 +50,7 @@ export function Sidebar({ role, currentPath, navigate }) {
           </a>
         ))}
       </nav>
+      <div className="sidebar-version">&gt;_ v2.4.1 - prod</div>
     </aside>
   );
 }
@@ -60,6 +58,10 @@ export function Sidebar({ role, currentPath, navigate }) {
 export function Topbar({ user, navigate, logout }) {
   return (
     <header className="topbar">
+      <label className="top-search" aria-label="Tìm kiếm">
+        <Search size={18} />
+        <input placeholder="Tìm kiếm cơ hội thực tập, công ty, kỹ năng..." />
+      </label>
       <div className="top-actions">
         <button className="icon-button" type="button" onClick={() => navigate(`/${user.role}/notifications`)} title="Thông báo">
           <Bell size={18} />
@@ -72,8 +74,8 @@ export function Topbar({ user, navigate, logout }) {
         >
           <span>{user.name?.slice(0, 1).toUpperCase()}</span>
           <div>
-            <strong>{user.name}</strong>
-            <small>{roleLabel(user.role)}</small>
+            <strong>{roleLabel(user.role)}</strong>
+            <small>{user.name}</small>
           </div>
         </button>
         <button className="icon-button" onClick={logout} title="Đăng xuất">
@@ -111,15 +113,16 @@ export function MetricCard({ icon: Icon, label, value, tone = 'green' }) {
 export function StatusBadge({ status }) {
   const key = String(status || '').toLowerCase();
   const labelMap = {
-    pending: 'Mới',
+    pending: 'Đang chờ',
     reviewed: 'Đã xem',
-    interview: 'Đã phỏng vấn',
-    accepted: 'Đã nhận',
-    rejected: 'Đã từ chối',
-    approved: 'Đang hiển thị',
+    interview: 'Phỏng vấn',
+    accepted: 'Chấp nhận',
+    rejected: 'Từ chối',
+    approved: 'Đã duyệt',
     closed: 'Đã đóng',
     active: 'Đang hoạt động',
     locked: 'Đã khóa',
+    hidden: 'Đã ẩn',
   };
   return <span className={`status status-${key}`}>{labelMap[key] || status || 'N/A'}</span>;
 }
@@ -147,29 +150,29 @@ export function StatusTable({ rows, onStatus, onOpen }) {
     <div className="table">
       <div className="table-head">
         <span>Vị trí</span>
-        <span>Ứng viên/Công ty</span>
+        <span>Ứng viên / Công ty</span>
         <span>Trạng thái</span>
         <span>Chi tiết</span>
       </div>
       {rows.map((row) => (
         <div className="table-row" key={row.id}>
-          <span>{row.internship_title || '-'}</span>
+          <span>{row.internship_title || row.title || '-'}</span>
           <span>{row.student_name || row.company_name || '-'}</span>
           <span>
             {onStatus ? (
               <select value={row.status} onChange={(e) => onStatus(row.id, e.target.value)}>
-                <option>Pending</option>
-                <option>Reviewed</option>
-                <option>Interview</option>
-                <option>Accepted</option>
-                <option>Rejected</option>
+                <option value="Pending">Đang chờ</option>
+                <option value="Reviewed">Đã xem</option>
+                <option value="Interview">Phỏng vấn</option>
+                <option value="Accepted">Chấp nhận</option>
+                <option value="Rejected">Từ chối</option>
               </select>
             ) : (
               <StatusBadge status={row.status} />
             )}
           </span>
           <span>
-            {onOpen ? <button className="soft-button" type="button" onClick={() => onOpen(row.id)}>Mở</button> : row.cv_url ? <a href={row.cv_url} target="_blank" rel="noreferrer">Mở CV</a> : '-'}
+            {onOpen ? <button className="soft-button" type="button" onClick={() => onOpen(row.id)}>Mở</button> : row.cv_url ? <a href={row.cv_url} target="_blank" rel="noreferrer">CV</a> : '-'}
           </span>
         </div>
       ))}

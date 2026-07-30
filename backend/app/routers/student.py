@@ -4,12 +4,14 @@ from sqlalchemy.orm import Session
 from app.auth import require_role
 from app.application_service import apply_to_internship as apply_to_internship_service
 from app.application_service import list_student_applications, serialize_application
+from app.config import get_settings
 from app.database import get_db
 from app.models import StudentProfile, User, UserRole
 from app.schemas import ApplicationCreate, ApplicationRead, StudentProfileBase, StudentProfileRead
-from app.services import upload_cv_to_s3, validate_cv_file
+from app.services import create_presigned_cv_url, upload_cv_to_s3, validate_cv_file
 
 router = APIRouter(tags=["student"])
+settings = get_settings()
 
 
 def get_or_create_profile(db: Session, user: User) -> StudentProfile:
@@ -58,6 +60,17 @@ def upload_cv(
     db.commit()
     db.refresh(profile)
     return profile
+
+
+@router.get("/students/cv")
+def get_own_cv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.student)),
+):
+    profile = get_or_create_profile(db, current_user)
+    if not profile.cv_url:
+        return {"cv_url": None, "expires_in": 0}
+    return {"cv_url": create_presigned_cv_url(profile.cv_url), "expires_in": settings.s3_presigned_url_expire_seconds}
 
 
 @router.post("/applications", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)

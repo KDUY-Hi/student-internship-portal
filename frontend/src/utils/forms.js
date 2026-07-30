@@ -22,7 +22,18 @@ export function companyFormFromApi(profile) {
 }
 
 export function roleLabel(role) {
-  if (role === 'company') return 'Nhà tuyển dụng';
+  if (role === 'company') return 'Doanh nghiệp';
   if (role === 'admin') return 'Quản trị viên';
-  return 'Ứng viên';
+  return 'Sinh viên';
+}
+
+export function forumPostTypeLabel(type) {
+  const labelMap = {
+    Question: 'Câu hỏi',
+    'Academic Post': 'Bài học thuật',
+    'Experience Sharing': 'Chia sẻ kinh nghiệm',
+    Resource: 'Tài liệu',
+    Discussion: 'Thảo luận',
+  };
+  return labelMap[type] || type;
 }

@@ -5,9 +5,9 @@ from app.auth import get_current_user, require_role
 from app.database import get_db
 from sqlalchemy import or_
 
-from app.models import Application, ApplicationStatus, Company, InternshipPost, PostStatus, Skill, User, UserRole
+from app.models import Application, ApplicationStatus, Company, InternshipPost, JobPosition, PostStatus, Skill, User, UserRole
 from app.notifications import list_user_notifications, mark_user_notification_read
-from app.schemas import CompanySearchRead, DashboardStats, NotificationRead, SkillRead
+from app.schemas import CompanySearchRead, DashboardStats, JobPositionRead, NotificationRead, SkillRead
 
 router = APIRouter(tags=["common"])
 
@@ -15,6 +15,22 @@ router = APIRouter(tags=["common"])
 @router.get("/skills", response_model=list[SkillRead])
 def list_skills(db: Session = Depends(get_db)):
     return db.query(Skill).order_by(Skill.name.asc()).all()
+
+
+@router.get("/job-positions", response_model=list[JobPositionRead])
+def list_job_positions(
+    q: str | None = None,
+    category: str | None = None,
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    query = db.query(JobPosition).filter(JobPosition.is_active.is_(True))
+    if q:
+        query = query.filter(JobPosition.name.ilike(f"%{q}%"))
+    if category:
+        query = query.filter(JobPosition.category == category)
+    return query.order_by(JobPosition.category.asc(), JobPosition.name.asc()).offset(offset).limit(limit).all()
 
 
 @router.get("/companies", response_model=list[CompanySearchRead])

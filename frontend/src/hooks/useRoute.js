@@ -7,7 +7,9 @@ export function roleBasePath(role) {
 }
 
 export function defaultPathForRole(role) {
-  return `${roleBasePath(role)}/home`;
+  if (role === 'company') return '/company/applicants';
+  if (role === 'admin') return '/admin/posts';
+  return '/student/jobs';
 }
 
 export function normalizePathForRole(role, pathname) {
